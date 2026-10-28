@@ -3,7 +3,7 @@
 "use strict";
 var mount = document.getElementById("amr-tool");
 if (!mount) return;
-mount.innerHTML = "<label class=\"amr-drop\" id=\"amr-drop\" data-ui>\n    <input type=\"file\" id=\"amr-file\" class=\"amr-sr-only\" multiple accept=\"image/*,.heic,.heif,.avif\" aria-label=\"Choose images to clean\">\n    <div class=\"amr-icon\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 16V4M6 10l6-6 6 6\"/><path d=\"M4 20h16\"/></svg></div>\n    <strong>Drag your images here, or click to choose them</strong>\n    <span>Works with JPG, PNG, WebP, HEIC and more. Your image quality stays the same.</span>\n    <em class=\"amr-drop-btn\">Choose images</em>\n  </label>\n\n  <div class=\"amr-options\" data-ui>\n    <label><input type=\"checkbox\" id=\"amr-keepIcc\" checked> Keep original colors <span class=\"amr-hint\">recommended</span></label>\n    <label><input type=\"checkbox\" id=\"amr-unique\"> Make each image unique <span class=\"amr-hint\">tiny invisible changes</span></label>\n    <label>New file names\n      <select id=\"amr-nameMode\">\n        <option value=\"suffix\">photo-clean.jpg</option>\n        <option value=\"keep\">Same as original</option>\n        <option value=\"rename\">image-001, image-002\u2026</option>\n      </select>\n    </label>\n  </div>\n\n  <div class=\"amr-summary\" id=\"amr-summary\" data-ui>\n    <div class=\"amr-stats\" id=\"amr-stats\"></div>\n    <div class=\"amr-btns\">\n      <button id=\"amr-clear\">Start over</button>\n      <button class=\"amr-primary\" id=\"amr-zip\">Download all</button>\n    </div>\n  </div>\n\n  <div class=\"amr-list\" id=\"amr-list\" data-ui></div>";
+mount.innerHTML = "<label class=\"amr-drop\" id=\"amr-drop\" data-ui>\n    <input type=\"file\" id=\"amr-file\" class=\"amr-sr-only\" multiple accept=\"image/*,.heic,.heif,.avif\" aria-label=\"Choose images to clean\">\n    <div class=\"amr-icon\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 16V4M6 10l6-6 6 6\"/><path d=\"M4 20h16\"/></svg></div>\n    <strong>Drag your images here, or click to choose them</strong>\n    <span>Works with JPG, PNG, WebP, HEIC and more. Your image quality stays the same.</span>\n    <div class=\"amr-drop-actions\">\n      <em class=\"amr-drop-btn\">Choose images</em>\n      <button type=\"button\" class=\"amr-paste-btn\" id=\"amr-paste\" hidden>Paste image</button>\n    </div>\n    <span class=\"amr-paste-hint\" id=\"amr-pasteHint\" aria-live=\"polite\">or press <kbd id=\"amr-pasteKey\">Ctrl+V</kbd> to paste an image</span>\n  </label>\n\n  <div class=\"amr-options\" data-ui>\n    <label><input type=\"checkbox\" id=\"amr-keepIcc\" checked> Keep original colors <span class=\"amr-hint\">recommended</span></label>\n    <label><input type=\"checkbox\" id=\"amr-unique\"> Make each image unique <span class=\"amr-hint\">tiny invisible changes</span></label>\n    <label>New file names\n      <select id=\"amr-nameMode\">\n        <option value=\"suffix\">photo-clean.jpg</option>\n        <option value=\"keep\">Same as original</option>\n        <option value=\"rename\">image-001, image-002\u2026</option>\n      </select>\n    </label>\n  </div>\n\n  <div class=\"amr-summary\" id=\"amr-summary\" data-ui>\n    <div class=\"amr-stats\" id=\"amr-stats\"></div>\n    <div class=\"amr-btns\">\n      <button id=\"amr-clear\">Start over</button>\n      <button class=\"amr-primary\" id=\"amr-zip\">Download all</button>\n    </div>\n  </div>\n\n  <div class=\"amr-list\" id=\"amr-list\" data-ui></div>";
 
 /* ===== Core cleaning logic (no DOM) ===== */
 const AI_PATTERNS = [
@@ -296,6 +296,56 @@ const drop = $('#amr-drop');
 ['dragleave','drop'].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.remove('amr-over'); }));
 drop.addEventListener('drop', ev => addFiles(ev.dataTransfer.files));
 $('#amr-file').addEventListener('change', ev => { addFiles(ev.target.files); ev.target.value = ''; });
+
+/* Paste from the clipboard: Ctrl/Cmd+V anywhere on the page, or the Paste button */
+const pasteHint = $('#amr-pasteHint'), pasteHintHTML = pasteHint.innerHTML;
+const isMac = /Mac|iPhone|iPad/.test(navigator.userAgentData?.platform || navigator.platform || '');
+$('#amr-pasteKey').textContent = isMac ? '⌘V' : 'Ctrl+V';
+let pasteCount = 0, hintTimer;
+function pasteNote(msg){
+  pasteHint.textContent = msg; clearTimeout(hintTimer);
+  hintTimer = setTimeout(() => { pasteHint.innerHTML = pasteHintHTML; $('#amr-pasteKey').textContent = isMac ? '⌘V' : 'Ctrl+V'; }, 4000);
+}
+function pastedFile(blob){
+  if (blob.name && blob.name !== 'image.png') return blob;   // a real file copied from the file manager
+  const ext = (blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg').replace(/\+.*/, '');
+  return new File([blob], `pasted-image-${++pasteCount}.${ext}`, { type: blob.type, lastModified: Date.now() });
+}
+function isTextField(el){
+  if (!el || !el.closest) return false;
+  if (el.closest('textarea,[contenteditable=""],[contenteditable="true"]')) return true;
+  return el.matches('input') && !['file','checkbox','radio','button','submit','reset','range','color'].includes(el.type);
+}
+document.addEventListener('paste', ev => {
+  if (isTextField(ev.target)) return;
+  const dt = ev.clipboardData; if (!dt) return;
+  let files = [...dt.files];
+  if (!files.length) files = [...dt.items].filter(i => i.kind === 'file').map(i => i.getAsFile()).filter(Boolean);
+  files = files.filter(f => f.type.startsWith('image/') || IMG_RE.test(f.name));
+  if (!files.length) return;
+  ev.preventDefault();
+  addFiles(files.map(pastedFile));
+});
+if (navigator.clipboard && navigator.clipboard.read){
+  const pasteBtn = $('#amr-paste');
+  pasteBtn.hidden = false;
+  pasteBtn.addEventListener('click', async ev => {
+    ev.preventDefault(); ev.stopPropagation();   // don't open the file picker
+    try{
+      const files = [];
+      for (const ci of await navigator.clipboard.read()){
+        const type = ci.types.find(t => t.startsWith('image/'));
+        if (type) files.push(pastedFile(await ci.getType(type)));
+      }
+      if (files.length) addFiles(files);
+      else pasteNote('No image found in your clipboard. Copy an image first.');
+    }catch(e){
+      pasteNote(e && e.name === 'NotAllowedError'
+        ? `Clipboard access was blocked. Press ${isMac ? '⌘V' : 'Ctrl+V'} instead.`
+        : 'No image found in your clipboard. Copy an image first.');
+    }
+  });
+}
 ['#amr-keepIcc', '#amr-unique'].forEach(id => $(id).addEventListener('change', () => { items.forEach(it => it.status = 'queued'); renderAll(); processQueue(); }));
 $('#amr-nameMode').addEventListener('change', renderAll);
 $('#amr-clear').addEventListener('click', () => { items.forEach(it => it.url && URL.revokeObjectURL(it.url)); items.length = 0; renderAll(); });

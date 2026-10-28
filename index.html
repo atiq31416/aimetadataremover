@@ -119,6 +119,12 @@ button:disabled{opacity:.5;cursor:default}
 .heart{vertical-align:-2px}
 .drop-btn{display:inline-flex;align-items:center;min-height:44px;margin-top:18px;padding:0 20px;border-radius:10px;background:var(--accent);color:var(--accent-ink);font-style:normal;font-weight:500;font-size:15px;transition:background-color .15s}
 .drop:hover .drop-btn{background:color-mix(in srgb,var(--accent) 85%,#000)}
+.drop-actions{display:flex;justify-content:center;flex-wrap:wrap;gap:10px;margin-top:18px}
+.drop-actions .drop-btn{margin-top:0}
+.paste-btn{min-height:44px;padding:0 20px;font-size:15px}
+.drop .paste-hint{margin-top:12px;font-size:13px}
+.drop kbd{font:inherit;font-size:12px;padding:1px 6px;border:1px solid var(--border);border-bottom-width:2px;border-radius:5px;background:var(--surface-2);color:var(--text)}
+@media (hover:none){ .drop .paste-hint{display:none} }
 .demo-sec{display:grid;grid-template-columns:5fr 7fr;gap:64px;align-items:center}
 .demo-vid{display:block;width:100%;max-width:440px;height:auto;aspect-ratio:4/5;justify-self:end;border-radius:4px;background:#0c0b1a;object-fit:cover}
 .demo-link{display:inline-block;margin-top:24px;font-size:17px;font-weight:500;color:var(--accent);text-decoration:underline;text-underline-offset:4px;text-decoration-thickness:2px}
@@ -276,7 +282,11 @@ b,strong{font-weight:500}
     <div class="icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M6 10l6-6 6 6"/><path d="M4 20h16"/></svg></div>
     <strong>Drag your images here, or click to choose them</strong>
     <span>Works with JPG, PNG, WebP, HEIC and more. Your image quality stays the same.</span>
-    <em class="drop-btn">Choose images</em>
+    <div class="drop-actions">
+      <em class="drop-btn">Choose images</em>
+      <button type="button" class="paste-btn" id="paste" hidden>Paste image</button>
+    </div>
+    <span class="paste-hint" id="pasteHint" aria-live="polite">or press <kbd id="pasteKey">Ctrl+V</kbd> to paste an image</span>
   </label>
 
   <div class="options" data-ui>
@@ -376,7 +386,7 @@ b,strong{font-weight:500}
     <h2 id="how">How to remove AI metadata from an image</h2>
     <div class="how-grid">
       <div class="how-steps">
-      <div class="how-step" data-step="0"><h3>First, drop your images in.</h3><p>Drag them into the box at the top, or click to choose. Add as many as you like.</p></div>
+      <div class="how-step" data-step="0"><h3>First, drop your images in.</h3><p>Drag them into the box at the top, click to choose, or paste them. Add as many as you like.</p></div>
       <div class="how-step" data-step="1"><h3>Then we find what’s hiding.</h3><p>Every file is read right here in your browser. Open “Show details” to see the exact text we found.</p></div>
       <div class="how-step" data-step="2"><h3>Last, download them clean.</h3><p>Save images one by one, or get them all at once with “Download all”.</p></div>
       </div>
@@ -718,6 +728,56 @@ const drop = $('#drop');
 ['dragleave','drop'].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.remove('over'); }));
 drop.addEventListener('drop', ev => addFiles(ev.dataTransfer.files));
 $('#file').addEventListener('change', ev => { addFiles(ev.target.files); ev.target.value = ''; });
+
+/* Paste from the clipboard: Ctrl/Cmd+V anywhere on the page, or the Paste button */
+const pasteHint = $('#pasteHint'), pasteHintHTML = pasteHint.innerHTML;
+const isMac = /Mac|iPhone|iPad/.test(navigator.userAgentData?.platform || navigator.platform || '');
+$('#pasteKey').textContent = isMac ? '⌘V' : 'Ctrl+V';
+let pasteCount = 0, hintTimer;
+function pasteNote(msg){
+  pasteHint.textContent = msg; clearTimeout(hintTimer);
+  hintTimer = setTimeout(() => { pasteHint.innerHTML = pasteHintHTML; $('#pasteKey').textContent = isMac ? '⌘V' : 'Ctrl+V'; }, 4000);
+}
+function pastedFile(blob){
+  if (blob.name && blob.name !== 'image.png') return blob;   // a real file copied from the file manager
+  const ext = (blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg').replace(/\+.*/, '');
+  return new File([blob], `pasted-image-${++pasteCount}.${ext}`, { type: blob.type, lastModified: Date.now() });
+}
+function isTextField(el){
+  if (!el || !el.closest) return false;
+  if (el.closest('textarea,[contenteditable=""],[contenteditable="true"]')) return true;
+  return el.matches('input') && !['file','checkbox','radio','button','submit','reset','range','color'].includes(el.type);
+}
+document.addEventListener('paste', ev => {
+  if (isTextField(ev.target)) return;
+  const dt = ev.clipboardData; if (!dt) return;
+  let files = [...dt.files];
+  if (!files.length) files = [...dt.items].filter(i => i.kind === 'file').map(i => i.getAsFile()).filter(Boolean);
+  files = files.filter(f => f.type.startsWith('image/') || IMG_RE.test(f.name));
+  if (!files.length) return;
+  ev.preventDefault();
+  addFiles(files.map(pastedFile));
+});
+if (navigator.clipboard && navigator.clipboard.read){
+  const pasteBtn = $('#paste');
+  pasteBtn.hidden = false;
+  pasteBtn.addEventListener('click', async ev => {
+    ev.preventDefault(); ev.stopPropagation();   // don't open the file picker
+    try{
+      const files = [];
+      for (const ci of await navigator.clipboard.read()){
+        const type = ci.types.find(t => t.startsWith('image/'));
+        if (type) files.push(pastedFile(await ci.getType(type)));
+      }
+      if (files.length) addFiles(files);
+      else pasteNote('No image found in your clipboard. Copy an image first.');
+    }catch(e){
+      pasteNote(e && e.name === 'NotAllowedError'
+        ? `Clipboard access was blocked. Press ${isMac ? '⌘V' : 'Ctrl+V'} instead.`
+        : 'No image found in your clipboard. Copy an image first.');
+    }
+  });
+}
 ['#keepIcc', '#unique'].forEach(id => $(id).addEventListener('change', () => { items.forEach(it => it.status = 'queued'); renderAll(); processQueue(); }));
 $('#nameMode').addEventListener('change', renderAll);
 $('#clear').addEventListener('click', () => { items.forEach(it => it.url && URL.revokeObjectURL(it.url)); items.length = 0; renderAll(); });
