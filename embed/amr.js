@@ -401,6 +401,7 @@ function rowHTML(it){
     tags.push(`<span class="amr-tag">${it.removed.length ? it.removed.length + ' thing' + (it.removed.length === 1 ? '' : 's') + ' removed' : 'Nothing to remove'}</span>`);
     tags.push(it.verified ? '<span class="amr-tag amr-ok">'+CHECK_SVG+'Clean</span>' : '<span class="amr-tag amr-err">Could not fully clean</span>');
     side = `<button class="amr-toggle" data-toggle="${it.id}">${it.open ? 'Hide details' : 'Show details'}</button>
+      ${CAN_COPY ? `<button class="amr-btn amr-small" data-copy="${it.id}" title="Copy the clean image to paste it anywhere">Copy</button>` : ''}
       <a class="amr-btn amr-small" href="${it.url}" download="${esc(outName(it))}">Download</a>`;
     if (it.open) details = detailsHTML(it);
   }
@@ -436,9 +437,31 @@ $('#amr-list').addEventListener('click', ev => {
     renderAll();   // refresh names (image-001…) and the summary
     return;
   }
+  const cp = ev.target.closest('[data-copy]');
+  if (cp){ copyImage(items.find(x => x.id === +cp.dataset.copy), cp); return; }
   const b = ev.target.closest('[data-toggle]'); if (!b) return;
   const it = items.find(x => x.id === +b.dataset.toggle); it.open = !it.open; renderRow(it);
 });
+/* Copy a cleaned image to the clipboard. Clipboards only take PNG, so JPG/WebP are redrawn as PNG
+   (a canvas PNG carries no metadata, so the copy stays clean). */
+const CAN_COPY = !!(window.ClipboardItem && navigator.clipboard && navigator.clipboard.write);
+async function toPNG(it){
+  const blob = new Blob([it.bytes], { type: it.mime });
+  if (it.mime === 'image/png') return blob;
+  const bmp = await createImageBitmap(blob);
+  const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
+  c.getContext('2d').drawImage(bmp, 0, 0); bmp.close && bmp.close();
+  return new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('PNG failed')), 'image/png'));
+}
+async function copyImage(it, btn){
+  if (!it || it.status !== 'done') return;
+  const label = t => { btn.textContent = t; clearTimeout(btn._t); btn._t = setTimeout(() => { btn.textContent = 'Copy'; }, 1800); };
+  try{
+    // pass a promise so Safari keeps the click as the user gesture
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': toPNG(it) })]);
+    label('Copied!');
+  }catch(e){ label('Copy failed'); }
+}
 function renderRow(it){
   let el = document.querySelector(`[data-id="${it.id}"]`);
   if (!el){ el = document.createElement('div'); el.className = 'amr-row'; el.dataset.id = it.id; $('#amr-list').appendChild(el); }
