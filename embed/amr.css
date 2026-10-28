@@ -90,6 +90,13 @@
 #amr-app .amr-heart{vertical-align:-2px}
 #amr-app .amr-drop-btn{display:inline-flex;align-items:center;min-height:44px;margin-top:18px;padding:0 20px;border-radius:10px;background:var(--accent);color:var(--accent-ink);font-style:normal;font-weight:500;font-size:15px;transition:background-color .15s}
 #amr-app .amr-drop:hover .amr-drop-btn{background:color-mix(in srgb,var(--accent) 85%,#000)}
+#amr-app .amr-drop-actions{display:flex;justify-content:center;flex-wrap:wrap;gap:10px;margin-top:18px}
+#amr-app .amr-drop-actions .amr-drop-btn{margin-top:0}
+#amr-app .amr-paste-btn{min-height:44px;padding:0 20px;font-size:15px}
+#amr-app .amr-drop .amr-paste-hint{margin-top:12px;font-size:13px}
+#amr-app .amr-drop kbd{font:inherit;font-size:12px;padding:1px 6px;border:1px solid var(--border);border-bottom-width:2px;border-radius:5px;background:var(--surface-2);color:var(--text)}
+@media (hover:none){#amr-app .amr-drop .amr-paste-hint{display:none}
+ }
 #amr-app .amr-demo-sec{display:grid;grid-template-columns:5fr 7fr;gap:64px;align-items:center}
 #amr-app .amr-demo-vid{display:block;width:100%;max-width:440px;height:auto;aspect-ratio:4/5;justify-self:end;border-radius:4px;background:#0c0b1a;object-fit:cover}
 #amr-app .amr-demo-link{display:inline-block;margin-top:24px;font-size:17px;font-weight:500;color:var(--accent);text-decoration:underline;text-underline-offset:4px;text-decoration-thickness:2px}
